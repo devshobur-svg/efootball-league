@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <defs>
+    <linearGradient id="efGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00f0ff" />
+      <stop offset="100%" stop-color="#ff0055" />
+    </linearGradient>
+  </defs>
+  <!-- Background Rounded Dark Card -->
+  <rect width="32" height="32" rx="8" fill="#060913" stroke="#1e294b" stroke-width="1.5"/>
+  <!-- Glow Outer Accent -->
+  <rect x="2" y="2" width="28" height="28" rx="6" fill="url(#efGrad)" opacity="0.15" />
+  <!-- Text eF Stylized Sport -->
+  <text 
+    x="50%" 
+    y="54%" 
+    dominant-baseline="central" 
+    text-anchor="middle" 
+    font-family="system-ui, -apple-system, sans-serif" 
+    font-weight="900" 
+    font-size="15" 
+    font-style="italic" 
+    letter-spacing="-0.5px"
+    fill="url(#efGrad)"
+  >eF</text>
+</svg>
