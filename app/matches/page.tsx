@@ -3,15 +3,15 @@
 import React, { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { Tournament, Match, TopScorerRow } from '@/lib/types';
-import { Swords, ChevronLeft, ChevronRight, Save, Edit3, RotateCcw, Eye, Trophy, Trash2, X, BarChart2, Award } from 'lucide-react';
+import { Tournament, Match } from '@/lib/types';
+import { Swords, ChevronLeft, ChevronRight, Save, Edit3, RotateCcw, Trophy, Trash2, X, BarChart2, Award } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 function MatchesContent() {
   const searchParams = useSearchParams();
   const initialTournamentId = searchParams.get('tournamentId');
-  const isPublicMode = searchParams.get('mode') === 'public';
 
+  const [isAdmin, setIsAdmin] = useState(false);
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [selectedTournament, setSelectedTournament] = useState<string>('');
   const [matches, setMatches] = useState<Match[]>([]);
@@ -28,14 +28,22 @@ function MatchesContent() {
 
   // States Modal H2H Preview
   const [h2hMatch, setH2hMatch] = useState<Match | null>(null);
-
-  // Status Juara Cup
   const [cupChampion, setCupChampion] = useState<{ name: string; logo: string | null } | null>(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setIsAdmin(!!session);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsAdmin(!!session);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
 
   useEffect(() => {
     async function loadTournaments() {
       let query = supabase.from('tournaments').select('*');
-      if (isPublicMode && initialTournamentId) {
+      if (initialTournamentId) {
         query = query.eq('id', initialTournamentId);
       } else {
         query = query.order('created_at', { ascending: false });
@@ -54,7 +62,7 @@ function MatchesContent() {
       }
     }
     loadTournaments();
-  }, [initialTournamentId, isPublicMode]);
+  }, [initialTournamentId]);
 
   const loadMatches = async () => {
     if (!selectedTournament) return;
@@ -81,7 +89,6 @@ function MatchesContent() {
         });
         setScores(initialScoreMap);
 
-        // Cek jika final cup sudah selesai
         const currentTourney = tournaments.find((t) => t.id === selectedTournament);
         if (currentTourney?.type === 'cup') {
           const finalMatch = data.find((m) => m.round === 'Final' && m.status === 'completed');
@@ -107,7 +114,7 @@ function MatchesContent() {
   }, [selectedTournament, tournaments]);
 
   const handleScoreChange = (matchId: string, side: 'home' | 'away', val: string) => {
-    if (isPublicMode) return;
+    if (!isAdmin) return;
     const num = Math.max(0, parseInt(val, 10) || 0);
     setScores((prev) => ({
       ...prev,
@@ -119,7 +126,7 @@ function MatchesContent() {
   };
 
   const adjustScore = (matchId: string, side: 'home' | 'away', delta: number) => {
-    if (isPublicMode) return;
+    if (!isAdmin) return;
     const current = scores[matchId] || { home: 0, away: 0 };
     const newVal = Math.max(0, current[side] + delta);
     setScores((prev) => ({
@@ -131,31 +138,24 @@ function MatchesContent() {
     }));
   };
 
-  // FUNGSI AUTO-PROGRESSION BABAK GUGUR (CUP)
   const checkAndAdvanceCupStage = async (updatedMatches: Match[], activeTourney: Tournament) => {
     if (activeTourney.type !== 'cup') return;
 
-    // Ambil semua match di matchday yang sedang berlangsung
     const currentRoundMatches = updatedMatches.filter((m) => m.matchday === currentMatchday);
     const allCompleted = currentRoundMatches.every((m) => m.status === 'completed');
-
     if (!allCompleted) return;
 
-    // Cek apakah tidak ada hasil seri di fase gugur
     const hasDraw = currentRoundMatches.some((m) => m.home_score === m.away_score);
     if (hasDraw) {
-      alert('Peringatan: Babak sistem gugur tidak boleh imbang/seri! Tentukan pemenang via perpanjangan waktu atau penalti.');
+      alert('Babak sistem gugur tidak boleh imbang! Tentukan pemenang via Extra Time atau Penalti.');
       return;
     }
 
-    // Ambil para pemenang
-    const winners = currentRoundMatches.map((m) => {
-      return m.home_score > m.away_score ? m.home_team_id : m.away_team_id;
-    });
+    const winners = currentRoundMatches.map((m) =>
+      m.home_score > m.away_score ? m.home_team_id : m.away_team_id
+    );
 
-    // 1. Jika pemenang hanya 1 (Final selesai)
     if (winners.length === 1) {
-      const finalMatch = currentRoundMatches[0];
       const champId = winners[0];
       const { data: champTeam } = await supabase.from('teams').select('*').eq('id', champId).single();
       if (champTeam) {
@@ -165,12 +165,10 @@ function MatchesContent() {
       return;
     }
 
-    // 2. Cek apakah babak selanjutnya sudah pernah di-generate sebelumnya
     const nextMatchdayNumber = currentMatchday + 1;
     const existingNextMatches = updatedMatches.filter((m) => m.matchday === nextMatchdayNumber);
     if (existingNextMatches.length > 0) return;
 
-    // 3. Generate Pertandingan Babak Selanjutnya
     const nextRoundName = winners.length === 2 ? 'Final' : winners.length <= 4 ? 'Semi Final' : 'Babak Gugur';
     const nextMatchesToInsert = [];
 
@@ -200,12 +198,12 @@ function MatchesContent() {
   };
 
   const handleSaveResult = async (match: Match) => {
-    if (isPublicMode) return;
+    if (!isAdmin) return;
     const score = scores[match.id] || { home: 0, away: 0 };
-
     const currentTourney = tournaments.find((t) => t.id === selectedTournament);
+
     if (currentTourney?.type === 'cup' && score.home === score.away) {
-      alert('Babak sistem gugur (Cup) tidak boleh imbang/seri! Masukkan skor akhir termasuk adu penalti.');
+      alert('Babak sistem gugur (Cup) tidak boleh imbang/seri!');
       return;
     }
 
@@ -223,7 +221,6 @@ function MatchesContent() {
 
       if (error) throw error;
 
-      // Update state lokal dan picu auto-progress jika cup
       const updatedList = matches.map((m) =>
         m.id === match.id
           ? { ...m, home_score: score.home, away_score: score.away, status: 'completed' as const }
@@ -243,7 +240,7 @@ function MatchesContent() {
   };
 
   const handleResetMatch = async (matchId: string) => {
-    if (isPublicMode) return;
+    if (!isAdmin) return;
     const confirmReset = window.confirm('Kembalikan status laga ini menjadi Belum Dimainkan?');
     if (!confirmReset) return;
 
@@ -265,7 +262,6 @@ function MatchesContent() {
     }
   };
 
-  // Pencetak Gol Helpers
   const openScorerModal = async (match: Match) => {
     setScorerModalMatch(match);
     const { data } = await supabase.from('match_goals').select('*').eq('match_id', match.id);
@@ -285,7 +281,7 @@ function MatchesContent() {
   };
 
   const saveGoals = async () => {
-    if (!scorerModalMatch) return;
+    if (!scorerModalMatch || !isAdmin) return;
     try {
       await supabase.from('match_goals').delete().eq('match_id', scorerModalMatch.id);
       const validGoals = goalInputs
@@ -303,11 +299,10 @@ function MatchesContent() {
       setScorerModalMatch(null);
       alert('Pencetak gol berhasil disimpan!');
     } catch (err: any) {
-      alert(`Gagal menyimpan: ${err.message}`);
+      alert(`Gagal menyimpan pencetak gol: ${err.message}`);
     }
   };
 
-  // Komputasi H2H
   const getH2HStats = (teamAId: string, teamBId: string) => {
     const directMatches = allMatchesForH2H.filter(
       (m) =>
@@ -346,7 +341,7 @@ function MatchesContent() {
           <div className="min-w-0">
             <div className="flex items-center space-x-2">
               <h1 className="text-base sm:text-xl font-black text-white tracking-wide truncate uppercase">
-                {isPublicMode && activeTournamentInfo ? activeTournamentInfo.name : 'Jadwal & Hasil'}
+                {activeTournamentInfo ? activeTournamentInfo.name : 'Jadwal & Hasil'}
               </h1>
               {activeTournamentInfo && (
                 <span className="px-2 py-0.5 rounded-full bg-[#00f0ff]/15 border border-[#00f0ff]/30 text-[#00f0ff] text-[10px] font-black uppercase">
@@ -355,12 +350,12 @@ function MatchesContent() {
               )}
             </div>
             <p className="text-[11px] text-[#64748b] truncate">
-              {activeTournamentInfo?.type === 'cup' ? 'Turnamen Sistem Gugur (Knockout Bracket)' : 'Format Liga Round Robin'}
+              {isAdmin ? 'Mode Admin: Input skor & pencetak gol match' : 'Papan Skor Resmi (Mode Penonton)'}
             </p>
           </div>
         </div>
 
-        {!isPublicMode && tournaments.length > 0 && (
+        {tournaments.length > 0 && (
           <div className="shrink-0">
             <select
               value={selectedTournament}
@@ -380,7 +375,7 @@ function MatchesContent() {
         )}
       </div>
 
-      {/* BANNER JUARA JIKA FINAL CUP SELESAI */}
+      {/* Banner Juara Cup */}
       {cupChampion && (
         <div className="p-4 sm:p-6 rounded-2xl bg-gradient-to-r from-yellow-500/20 via-[#0f1629] to-yellow-500/20 border border-yellow-500/40 text-center space-y-2 shadow-[0_0_30px_rgba(255,230,0,0.2)]">
           <div className="flex items-center justify-center space-x-2 text-yellow-400 font-black tracking-widest text-xs uppercase">
@@ -400,7 +395,7 @@ function MatchesContent() {
               {cupChampion.name}
             </h2>
           </div>
-          <p className="text-xs text-[#94a3b8]">Selamat kepada pemenang turnamen!</p>
+          <p className="text-xs text-[#94a3b8]">Selamat kepada sang juara turnamen!</p>
         </div>
       )}
 
@@ -502,7 +497,8 @@ function MatchesContent() {
 
                     {/* SCORE / VS BADGE */}
                     <div className="col-span-3 flex justify-center">
-                      {isPublicMode ? (
+                      {!isAdmin ? (
+                        /* Read-Only Badge untuk Non-Admin / Publik */
                         <div className="px-2.5 py-1 rounded-xl bg-[#060913] border border-[#1e294b] text-center min-w-[56px]">
                           {isCompleted ? (
                             <div className="flex items-center justify-center space-x-1 font-mono text-sm sm:text-base font-black text-[#00f0ff]">
@@ -515,6 +511,7 @@ function MatchesContent() {
                           )}
                         </div>
                       ) : (
+                        /* Admin Score Controller */
                         <div className="flex items-center space-x-1 bg-[#060913] p-1 rounded-xl border border-[#1e294b]">
                           <div className="flex flex-col items-center">
                             <button
@@ -588,7 +585,7 @@ function MatchesContent() {
                   </div>
 
                   {/* ADMIN ACTION FOOTER */}
-                  {!isPublicMode && (
+                  {isAdmin && (
                     <div className="pt-2 border-t border-[#1e294b]/50 flex items-center justify-between gap-2">
                       <div className="flex items-center space-x-1.5">
                         {isCompleted && (
@@ -649,22 +646,24 @@ function MatchesContent() {
               {scorerModalMatch.home_team?.name} vs {scorerModalMatch.away_team?.name}
             </p>
 
-            <div className="flex space-x-2">
-              <button
-                type="button"
-                onClick={() => addGoalInput(scorerModalMatch.home_team_id)}
-                className="flex-1 py-1.5 rounded-xl bg-[#060913] border border-[#00f0ff]/40 hover:bg-[#00f0ff]/10 text-[#00f0ff] text-xs font-bold"
-              >
-                + Gol {scorerModalMatch.home_team?.name}
-              </button>
-              <button
-                type="button"
-                onClick={() => addGoalInput(scorerModalMatch.away_team_id)}
-                className="flex-1 py-1.5 rounded-xl bg-[#060913] border border-[#ff0055]/40 hover:bg-[#ff0055]/10 text-[#ff0055] text-xs font-bold"
-              >
-                + Gol {scorerModalMatch.away_team?.name}
-              </button>
-            </div>
+            {isAdmin && (
+              <div className="flex space-x-2">
+                <button
+                  type="button"
+                  onClick={() => addGoalInput(scorerModalMatch.home_team_id)}
+                  className="flex-1 py-1.5 rounded-xl bg-[#060913] border border-[#00f0ff]/40 hover:bg-[#00f0ff]/10 text-[#00f0ff] text-xs font-bold"
+                >
+                  + Gol {scorerModalMatch.home_team?.name}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => addGoalInput(scorerModalMatch.away_team_id)}
+                  className="flex-1 py-1.5 rounded-xl bg-[#060913] border border-[#ff0055]/40 hover:bg-[#ff0055]/10 text-[#ff0055] text-xs font-bold"
+                >
+                  + Gol {scorerModalMatch.away_team?.name}
+                </button>
+              </div>
+            )}
 
             <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
               {goalInputs.length === 0 ? (
@@ -679,6 +678,7 @@ function MatchesContent() {
                       </span>
                       <input
                         type="text"
+                        disabled={!isAdmin}
                         placeholder="Nama pemain (misal: Mbappe)"
                         value={item.playerName}
                         onChange={(e) => {
@@ -688,9 +688,11 @@ function MatchesContent() {
                         }}
                         className="flex-1 bg-transparent text-xs text-white focus:outline-none font-bold"
                       />
-                      <button onClick={() => removeGoalInput(idx)} className="text-[#64748b] hover:text-[#ff0055]">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {isAdmin && (
+                        <button onClick={() => removeGoalInput(idx)} className="text-[#64748b] hover:text-[#ff0055]">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   );
                 })
@@ -704,12 +706,14 @@ function MatchesContent() {
               >
                 Tutup
               </button>
-              <button
-                onClick={saveGoals}
-                className="px-5 py-2 rounded-xl bg-[#00f0ff] text-slate-950 font-black text-xs shadow-md"
-              >
-                Simpan Pencetak Gol
-              </button>
+              {isAdmin && (
+                <button
+                  onClick={saveGoals}
+                  className="px-5 py-2 rounded-xl bg-[#00f0ff] text-slate-950 font-black text-xs shadow-md"
+                >
+                  Simpan Pencetak Gol
+                </button>
+              )}
             </div>
           </div>
         </div>
