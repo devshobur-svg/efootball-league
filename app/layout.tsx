@@ -1,10 +1,27 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import Navbar from "@/components/Navbar";
 import "./globals.css";
+
+export const viewport: Viewport = {
+  themeColor: "#060913",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+};
 
 export const metadata: Metadata = {
   title: "eFootball Tournament Hub",
   description: "Aplikasi Generator & Manajemen Liga/Cup eFootball Modern",
+  manifest: "/manifest.json",
+  icons: {
+    icon: "/icon.svg",
+    apple: "/icon.svg",
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "eFootball Hub",
+  },
 };
 
 export default function RootLayout({

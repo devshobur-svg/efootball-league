@@ -3,8 +3,9 @@
 import React, { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { Tournament, Match } from '@/lib/types';
-import { Swords, ChevronLeft, ChevronRight, Save, Edit3, RotateCcw, Trophy, Trash2, X, BarChart2, Award } from 'lucide-react';
+import { Tournament, Match, Team } from '@/lib/types';
+import CupBracketView from '@/components/CupBracketView';
+import { Swords, ChevronLeft, ChevronRight, Save, Edit3, RotateCcw, Trophy, Trash2, X, BarChart2, Award, Search, LayoutGrid, ListFilter } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 function MatchesContent() {
@@ -16,17 +17,21 @@ function MatchesContent() {
   const [selectedTournament, setSelectedTournament] = useState<string>('');
   const [matches, setMatches] = useState<Match[]>([]);
   const [allMatchesForH2H, setAllMatchesForH2H] = useState<Match[]>([]);
+  const [tournamentTeams, setTournamentTeams] = useState<Team[]>([]);
   const [currentMatchday, setCurrentMatchday] = useState<number>(1);
   const [totalMatchdays, setTotalMatchdays] = useState<number>(1);
   const [loading, setLoading] = useState(true);
   const [scores, setScores] = useState<Record<string, { home: number; away: number }>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
 
-  // States Modal Pencetak Gol
+  // States Filter Klub & Switch Tampilan Bagan
+  const [selectedTeamFilter, setSelectedTeamFilter] = useState<string>('all');
+  const [searchClubKeyword, setSearchClubKeyword] = useState<string>('');
+  const [viewMode, setViewMode] = useState<'list' | 'bracket'>('list');
+
+  // States Modal Pencetak Gol & H2H
   const [scorerModalMatch, setScorerModalMatch] = useState<Match | null>(null);
   const [goalInputs, setGoalInputs] = useState<{ teamId: string; playerName: string }[]>([]);
-
-  // States Modal H2H Preview
   const [h2hMatch, setH2hMatch] = useState<Match | null>(null);
   const [cupChampion, setCupChampion] = useState<{ name: string; logo: string | null } | null>(null);
 
@@ -68,6 +73,14 @@ function MatchesContent() {
     if (!selectedTournament) return;
     setLoading(true);
     try {
+      // Ambil daftar tim turnamen ini
+      const { data: teamsData } = await supabase
+        .from('teams')
+        .select('*')
+        .eq('tournament_id', selectedTournament)
+        .order('name');
+      if (teamsData) setTournamentTeams(teamsData);
+
       const { data } = await supabase
         .from('matches')
         .select('*, home_team:teams!matches_home_team_id_fkey(*), away_team:teams!matches_away_team_id_fkey(*)')
@@ -327,12 +340,33 @@ function MatchesContent() {
     return { total: directMatches.length, aWins, bWins, draws };
   };
 
-  const filteredMatches = matches.filter((m) => m.matchday === currentMatchday);
   const activeTournamentInfo = tournaments.find((t) => t.id === selectedTournament);
+
+  // Filter Match Logika: Matchday ATAU Filter Klub Tertentu
+  const isFilteringByClub = selectedTeamFilter !== 'all' || searchClubKeyword.trim().length > 0;
+
+  const filteredMatches = matches.filter((m) => {
+    if (isFilteringByClub) {
+      const matchTeamFilter =
+        selectedTeamFilter === 'all' ||
+        m.home_team_id === selectedTeamFilter ||
+        m.away_team_id === selectedTeamFilter;
+
+      const keyword = searchClubKeyword.toLowerCase();
+      const matchKeyword =
+        !keyword ||
+        (m.home_team?.name && m.home_team.name.toLowerCase().includes(keyword)) ||
+        (m.away_team?.name && m.away_team.name.toLowerCase().includes(keyword));
+
+      return matchTeamFilter && matchKeyword;
+    }
+
+    return m.matchday === currentMatchday;
+  });
 
   return (
     <div className="space-y-3.5 pb-28 sm:pb-12 max-w-5xl mx-auto px-1 sm:px-0">
-      {/* Header Turnamen Compact */}
+      {/* Header Turnamen & Dropdown */}
       <div className="bg-[#0f1629] p-4 sm:p-5 rounded-2xl border border-[#1e294b] shadow-md flex items-center justify-between gap-3">
         <div className="flex items-center space-x-3 min-w-0">
           <div className="w-10 h-10 rounded-xl bg-[#00f0ff]/10 text-[#00f0ff] border border-[#00f0ff]/30 flex items-center justify-center shrink-0">
@@ -350,18 +384,44 @@ function MatchesContent() {
               )}
             </div>
             <p className="text-[11px] text-[#64748b] truncate">
-              {isAdmin ? 'Mode Admin: Input skor & pencetak gol match' : 'Papan Skor Resmi (Mode Penonton)'}
+              {isAdmin ? 'Mode Admin: Input skor & pencetak gol' : 'Papan Skor Resmi (Mode Penonton)'}
             </p>
           </div>
         </div>
 
-        {tournaments.length > 0 && (
-          <div className="shrink-0">
+        <div className="flex items-center space-x-2 shrink-0">
+          {/* Switch View Bracket (Khusus Turnamen Cup) */}
+          {activeTournamentInfo?.type === 'cup' && (
+            <div className="flex bg-[#060913] p-1 rounded-xl border border-[#1e294b]">
+              <button
+                onClick={() => setViewMode('list')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                  viewMode === 'list' ? 'bg-[#00f0ff] text-slate-950 shadow-sm' : 'text-[#64748b] hover:text-white'
+                }`}
+                title="Tampilan List"
+              >
+                List
+              </button>
+              <button
+                onClick={() => setViewMode('bracket')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                  viewMode === 'bracket' ? 'bg-[#00f0ff] text-slate-950 shadow-sm' : 'text-[#64748b] hover:text-white'
+                }`}
+                title="Tampilan Bagan Gugur"
+              >
+                Bagan
+              </button>
+            </div>
+          )}
+
+          {tournaments.length > 0 && (
             <select
               value={selectedTournament}
               onChange={(e) => {
                 setSelectedTournament(e.target.value);
                 setCurrentMatchday(1);
+                setSelectedTeamFilter('all');
+                setSearchClubKeyword('');
               }}
               className="bg-[#060913] border border-[#1e294b] rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-[#00f0ff] font-bold"
             >
@@ -371,263 +431,297 @@ function MatchesContent() {
                 </option>
               ))}
             </select>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
-      {/* Banner Juara Cup */}
-      {cupChampion && (
-        <div className="p-4 sm:p-6 rounded-2xl bg-gradient-to-r from-yellow-500/20 via-[#0f1629] to-yellow-500/20 border border-yellow-500/40 text-center space-y-2 shadow-[0_0_30px_rgba(255,230,0,0.2)]">
-          <div className="flex items-center justify-center space-x-2 text-yellow-400 font-black tracking-widest text-xs uppercase">
-            <Trophy className="w-5 h-5" />
-            <span>JUARA TURNAMEN CUP</span>
-            <Trophy className="w-5 h-5" />
-          </div>
-          <div className="flex items-center justify-center space-x-3">
-            <div className="w-12 h-12 rounded-xl bg-[#060913] border border-yellow-500/50 flex items-center justify-center overflow-hidden shrink-0">
-              {cupChampion.logo ? (
-                <img src={cupChampion.logo} alt="" className="w-full h-full object-cover" />
-              ) : (
-                <Award className="w-6 h-6 text-yellow-400" />
-              )}
-            </div>
-            <h2 className="text-2xl sm:text-3xl font-black text-white tracking-wide uppercase">
-              {cupChampion.name}
+      {/* FILTER & PENCARIAN KLUB (Poin 3) */}
+      <div className="bg-[#0f1629] p-3 rounded-2xl border border-[#1e294b] flex flex-col sm:flex-row items-center gap-2.5 shadow-sm">
+        <div className="relative w-full sm:flex-1">
+          <Search className="w-4 h-4 text-[#64748b] absolute left-3 top-2.5" />
+          <input
+            type="text"
+            placeholder="Cari klub... (misal: Chelsea, Depok FC)"
+            value={searchClubKeyword}
+            onChange={(e) => setSearchClubKeyword(e.target.value)}
+            className="w-full bg-[#060913] border border-[#1e294b] rounded-xl pl-9 pr-3 py-2 text-xs text-white focus:outline-none focus:border-[#00f0ff] font-medium"
+          />
+          {searchClubKeyword && (
+            <button onClick={() => setSearchClubKeyword('')} className="absolute right-3 top-2.5 text-[#64748b] hover:text-white">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
+        <div className="w-full sm:w-auto flex items-center space-x-2">
+          <ListFilter className="w-4 h-4 text-[#00f0ff] shrink-0" />
+          <select
+            value={selectedTeamFilter}
+            onChange={(e) => setSelectedTeamFilter(e.target.value)}
+            className="w-full sm:w-56 bg-[#060913] border border-[#1e294b] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[#00f0ff] font-bold"
+          >
+            <option value="all">Semua Klub ({tournamentTeams.length})</option>
+            {tournamentTeams.map((team) => (
+              <option key={team.id} value={team.id}>
+                {team.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* TAMPILAN BAGAN KHUSUS CUP (Poin 4) */}
+      {viewMode === 'bracket' && activeTournamentInfo?.type === 'cup' ? (
+        <div className="bg-[#0f1629] p-4 sm:p-5 rounded-2xl border border-[#1e294b] shadow-xl">
+          <div className="flex items-center space-x-2 mb-4">
+            <Trophy className="w-5 h-5 text-yellow-400" />
+            <h2 className="text-sm font-black text-white uppercase tracking-wider">
+              Bagan Visual Sistem Gugur
             </h2>
           </div>
-          <p className="text-xs text-[#94a3b8]">Selamat kepada sang juara turnamen!</p>
-        </div>
-      )}
-
-      {loading ? (
-        <div className="p-10 text-center text-[#64748b] bg-[#0f1629] rounded-2xl border border-[#1e294b] text-sm">
-          Memuat jadwal pertandingan...
-        </div>
-      ) : tournaments.length === 0 ? (
-        <div className="p-10 text-center text-[#64748b] bg-[#0f1629] rounded-2xl border border-[#1e294b] text-sm">
-          Kompetisi tidak ditemukan.
+          <CupBracketView matches={matches} />
         </div>
       ) : (
+        /* TAMPILAN LIST STANDAR */
         <div className="space-y-3">
-          {/* Matchday Slider */}
-          <div className="flex items-center justify-between bg-[#0f1629] px-3 py-2 rounded-xl border border-[#1e294b]">
-            <button
-              disabled={currentMatchday <= 1}
-              onClick={() => setCurrentMatchday((prev) => Math.max(prev - 1, 1))}
-              className="w-9 h-9 rounded-lg bg-[#060913] border border-[#1e294b] hover:border-[#00f0ff] disabled:opacity-30 text-white flex items-center justify-center transition-all active:scale-90"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
+          {/* Matchday Slider (Hanya tampil jika tidak sedang memfilter klub) */}
+          {!isFilteringByClub ? (
+            <div className="flex items-center justify-between bg-[#0f1629] px-3 py-2 rounded-xl border border-[#1e294b]">
+              <button
+                disabled={currentMatchday <= 1}
+                onClick={() => setCurrentMatchday((prev) => Math.max(prev - 1, 1))}
+                className="w-9 h-9 rounded-lg bg-[#060913] border border-[#1e294b] hover:border-[#00f0ff] disabled:opacity-30 text-white flex items-center justify-center transition-all active:scale-90"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
 
-            <div className="text-center">
-              <span className="text-[10px] font-bold text-[#64748b] uppercase tracking-wider block leading-none">
-                {activeTournamentInfo?.type === 'cup' ? 'Ronde Turnamen' : 'Jadwal Laga'}
-              </span>
-              <span className="font-black text-sm sm:text-base text-[#00f0ff] tracking-wide">
-                MATCHDAY {currentMatchday} <span className="text-[#64748b] font-normal text-xs">/ {totalMatchdays}</span>
-              </span>
+              <div className="text-center">
+                <span className="text-[10px] font-bold text-[#64748b] uppercase tracking-wider block leading-none">
+                  {activeTournamentInfo?.type === 'cup' ? 'Ronde Turnamen' : 'Jadwal Laga'}
+                </span>
+                <span className="font-black text-sm sm:text-base text-[#00f0ff] tracking-wide">
+                  MATCHDAY {currentMatchday} <span className="text-[#64748b] font-normal text-xs">/ {totalMatchdays}</span>
+                </span>
+              </div>
+
+              <button
+                disabled={currentMatchday >= totalMatchdays}
+                onClick={() => setCurrentMatchday((prev) => Math.min(prev + 1, totalMatchdays))}
+                className="w-9 h-9 rounded-lg bg-[#060913] border border-[#1e294b] hover:border-[#00f0ff] disabled:opacity-30 text-white flex items-center justify-center transition-all active:scale-90"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
             </div>
-
-            <button
-              disabled={currentMatchday >= totalMatchdays}
-              onClick={() => setCurrentMatchday((prev) => Math.min(prev + 1, totalMatchdays))}
-              className="w-9 h-9 rounded-lg bg-[#060913] border border-[#1e294b] hover:border-[#00f0ff] disabled:opacity-30 text-white flex items-center justify-center transition-all active:scale-90"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
+          ) : (
+            <div className="flex items-center justify-between bg-[#00f0ff]/10 px-4 py-2 rounded-xl border border-[#00f0ff]/30 text-xs">
+              <span className="text-[#00f0ff] font-bold">
+                Menampilkan hasil filter klub ({filteredMatches.length} laga ditemukan)
+              </span>
+              <button
+                onClick={() => {
+                  setSelectedTeamFilter('all');
+                  setSearchClubKeyword('');
+                }}
+                className="text-xs text-white hover:text-[#ff0055] font-bold underline"
+              >
+                Reset Filter
+              </button>
+            </div>
+          )}
 
           {/* List Kartu Pertandingan */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-            {filteredMatches.map((m) => {
-              const currentScore = scores[m.id] || { home: m.home_score, away: m.away_score };
-              const isCompleted = m.status === 'completed';
+          {filteredMatches.length === 0 ? (
+            <div className="p-8 text-center text-[#64748b] bg-[#0f1629] rounded-2xl border border-[#1e294b] text-xs">
+              Tidak ada pertandingan yang cocok dengan filter klub ini.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+              {filteredMatches.map((m) => {
+                const currentScore = scores[m.id] || { home: m.home_score, away: m.away_score };
+                const isCompleted = m.status === 'completed';
 
-              return (
-                <div
-                  key={m.id}
-                  className="bg-[#0f1629] border border-[#1e294b] hover:border-[#00f0ff]/30 rounded-2xl p-3.5 space-y-3 shadow-md transition-all"
-                >
-                  {/* Match Sub-header */}
-                  <div className="flex items-center justify-between text-[11px] border-b border-[#1e294b]/50 pb-2">
-                    <div className="flex items-center space-x-2">
-                      <span className="font-mono text-[#64748b]">Match #{m.id.substring(0, 5)}</span>
-                      {m.round && (
-                        <span className="text-[10px] text-[#00f0ff] font-bold font-mono">[{m.round}]</span>
-                      )}
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <button
-                        onClick={() => setH2hMatch(m)}
-                        className="px-2 py-0.5 rounded bg-[#060913] border border-[#1e294b] hover:border-[#00f0ff] text-[#94a3b8] hover:text-[#00f0ff] text-[10px] font-bold flex items-center space-x-1"
-                      >
-                        <BarChart2 className="w-3 h-3" />
-                        <span>H2H</span>
-                      </button>
-                      <span
-                        className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
-                          isCompleted
-                            ? 'bg-green-500/15 text-green-400 border border-green-500/30'
-                            : 'bg-[#00f0ff]/10 text-[#00f0ff] border border-[#00f0ff]/30'
-                        }`}
-                      >
-                        {isCompleted ? 'Selesai' : 'Upcoming'}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Duel Teams */}
-                  <div className="grid grid-cols-11 items-center gap-2 pt-0.5">
-                    {/* HOME TEAM */}
-                    <div className="col-span-4 flex items-center space-x-2 min-w-0">
-                      <div className="w-9 h-9 rounded-xl bg-[#060913] border border-[#1e294b] flex items-center justify-center overflow-hidden shrink-0">
-                        {m.home_team?.logo_url ? (
-                          <img src={m.home_team.logo_url} alt="" className="w-full h-full object-cover" />
-                        ) : (
-                          <span className="font-black text-xs text-[#00f0ff]">H</span>
-                        )}
+                return (
+                  <div
+                    key={m.id}
+                    className="bg-[#0f1629] border border-[#1e294b] hover:border-[#00f0ff]/30 rounded-2xl p-3.5 space-y-3 shadow-md transition-all"
+                  >
+                    <div className="flex items-center justify-between text-[11px] border-b border-[#1e294b]/50 pb-2">
+                      <div className="flex items-center space-x-2">
+                        <span className="font-mono text-[#64748b]">Match #{m.id.substring(0, 5)}</span>
+                        <span className="text-[10px] text-[#00f0ff] font-bold font-mono">
+                          MD {m.matchday} {m.round ? `• ${m.round}` : ''}
+                        </span>
                       </div>
-                      <div className="min-w-0">
-                        <p className="font-bold text-xs sm:text-sm text-white truncate leading-tight">
-                          {m.home_team?.name || 'Home'}
-                        </p>
-                        <span className="text-[9px] font-semibold text-[#64748b] block">Tuan Rumah</span>
+                      <div className="flex items-center space-x-2">
+                        <button
+                          onClick={() => setH2hMatch(m)}
+                          className="px-2 py-0.5 rounded bg-[#060913] border border-[#1e294b] hover:border-[#00f0ff] text-[#94a3b8] hover:text-[#00f0ff] text-[10px] font-bold flex items-center space-x-1"
+                        >
+                          <BarChart2 className="w-3 h-3" />
+                          <span>H2H</span>
+                        </button>
+                        <span
+                          className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
+                            isCompleted
+                              ? 'bg-green-500/15 text-green-400 border border-green-500/30'
+                              : 'bg-[#00f0ff]/10 text-[#00f0ff] border border-[#00f0ff]/30'
+                          }`}
+                        >
+                          {isCompleted ? 'Selesai' : 'Upcoming'}
+                        </span>
                       </div>
                     </div>
 
-                    {/* SCORE / VS BADGE */}
-                    <div className="col-span-3 flex justify-center">
-                      {!isAdmin ? (
-                        /* Read-Only Badge untuk Non-Admin / Publik */
-                        <div className="px-2.5 py-1 rounded-xl bg-[#060913] border border-[#1e294b] text-center min-w-[56px]">
-                          {isCompleted ? (
-                            <div className="flex items-center justify-center space-x-1 font-mono text-sm sm:text-base font-black text-[#00f0ff]">
-                              <span>{m.home_score}</span>
-                              <span className="text-[#64748b] text-xs">:</span>
-                              <span>{m.away_score}</span>
-                            </div>
+                    <div className="grid grid-cols-11 items-center gap-2 pt-0.5">
+                      {/* HOME TEAM */}
+                      <div className="col-span-4 flex items-center space-x-2 min-w-0">
+                        <div className="w-9 h-9 rounded-xl bg-[#060913] border border-[#1e294b] flex items-center justify-center overflow-hidden shrink-0">
+                          {m.home_team?.logo_url ? (
+                            <img src={m.home_team.logo_url} alt="" className="w-full h-full object-cover" />
                           ) : (
-                            <span className="text-[11px] font-black text-[#64748b] tracking-wider">VS</span>
+                            <span className="font-black text-xs text-[#00f0ff]">H</span>
                           )}
                         </div>
-                      ) : (
-                        /* Admin Score Controller */
-                        <div className="flex items-center space-x-1 bg-[#060913] p-1 rounded-xl border border-[#1e294b]">
-                          <div className="flex flex-col items-center">
-                            <button
-                              type="button"
-                              onClick={() => adjustScore(m.id, 'home', 1)}
-                              className="w-6 h-4 text-[9px] text-[#64748b] hover:text-[#00f0ff] flex items-center justify-center font-bold"
-                            >
-                              ▲
-                            </button>
-                            <input
-                              type="number"
-                              min="0"
-                              value={currentScore.home}
-                              onChange={(e) => handleScoreChange(m.id, 'home', e.target.value)}
-                              className="w-7 h-5 text-center bg-transparent text-xs font-black text-[#00f0ff] focus:outline-none"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => adjustScore(m.id, 'home', -1)}
-                              className="w-6 h-4 text-[9px] text-[#64748b] hover:text-[#00f0ff] flex items-center justify-center font-bold"
-                            >
-                              ▼
-                            </button>
-                          </div>
-
-                          <span className="text-[#64748b] font-bold text-[10px]">:</span>
-
-                          <div className="flex flex-col items-center">
-                            <button
-                              type="button"
-                              onClick={() => adjustScore(m.id, 'away', 1)}
-                              className="w-6 h-4 text-[9px] text-[#64748b] hover:text-[#ff0055] flex items-center justify-center font-bold"
-                            >
-                              ▲
-                            </button>
-                            <input
-                              type="number"
-                              min="0"
-                              value={currentScore.away}
-                              onChange={(e) => handleScoreChange(m.id, 'away', e.target.value)}
-                              className="w-7 h-5 text-center bg-transparent text-xs font-black text-[#00f0ff] focus:outline-none"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => adjustScore(m.id, 'away', -1)}
-                              className="w-6 h-4 text-[9px] text-[#64748b] hover:text-[#ff0055] flex items-center justify-center font-bold"
-                            >
-                              ▼
-                            </button>
-                          </div>
+                        <div className="min-w-0">
+                          <p className="font-bold text-xs sm:text-sm text-white truncate leading-tight">
+                            {m.home_team?.name || 'Home'}
+                          </p>
+                          <span className="text-[9px] font-semibold text-[#64748b] block">Tuan Rumah</span>
                         </div>
-                      )}
-                    </div>
-
-                    {/* AWAY TEAM */}
-                    <div className="col-span-4 flex items-center justify-end space-x-2 min-w-0 text-right">
-                      <div className="min-w-0">
-                        <p className="font-bold text-xs sm:text-sm text-white truncate leading-tight">
-                          {m.away_team?.name || 'Away'}
-                        </p>
-                        <span className="text-[9px] font-semibold text-[#64748b] block">Tamu</span>
                       </div>
-                      <div className="w-9 h-9 rounded-xl bg-[#060913] border border-[#1e294b] flex items-center justify-center overflow-hidden shrink-0">
-                        {m.away_team?.logo_url ? (
-                          <img src={m.away_team.logo_url} alt="" className="w-full h-full object-cover" />
+
+                      {/* SCORE */}
+                      <div className="col-span-3 flex justify-center">
+                        {!isAdmin ? (
+                          <div className="px-2.5 py-1 rounded-xl bg-[#060913] border border-[#1e294b] text-center min-w-[56px]">
+                            {isCompleted ? (
+                              <div className="flex items-center justify-center space-x-1 font-mono text-sm sm:text-base font-black text-[#00f0ff]">
+                                <span>{m.home_score}</span>
+                                <span className="text-[#64748b] text-xs">:</span>
+                                <span>{m.away_score}</span>
+                              </div>
+                            ) : (
+                              <span className="text-[11px] font-black text-[#64748b] tracking-wider">VS</span>
+                            )}
+                          </div>
                         ) : (
-                          <span className="font-black text-xs text-[#ff0055]">A</span>
+                          <div className="flex items-center space-x-1 bg-[#060913] p-1 rounded-xl border border-[#1e294b]">
+                            <div className="flex flex-col items-center">
+                              <button
+                                type="button"
+                                onClick={() => adjustScore(m.id, 'home', 1)}
+                                className="w-6 h-4 text-[9px] text-[#64748b] hover:text-[#00f0ff] flex items-center justify-center font-bold"
+                              >
+                                ▲
+                              </button>
+                              <input
+                                type="number"
+                                min="0"
+                                value={currentScore.home}
+                                onChange={(e) => handleScoreChange(m.id, 'home', e.target.value)}
+                                className="w-7 h-5 text-center bg-transparent text-xs font-black text-[#00f0ff] focus:outline-none"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => adjustScore(m.id, 'home', -1)}
+                                className="w-6 h-4 text-[9px] text-[#64748b] hover:text-[#00f0ff] flex items-center justify-center font-bold"
+                              >
+                                ▼
+                              </button>
+                            </div>
+
+                            <span className="text-[#64748b] font-bold text-[10px]">:</span>
+
+                            <div className="flex flex-col items-center">
+                              <button
+                                type="button"
+                                onClick={() => adjustScore(m.id, 'away', 1)}
+                                className="w-6 h-4 text-[9px] text-[#64748b] hover:text-[#ff0055] flex items-center justify-center font-bold"
+                              >
+                                ▲
+                              </button>
+                              <input
+                                type="number"
+                                min="0"
+                                value={currentScore.away}
+                                onChange={(e) => handleScoreChange(m.id, 'away', e.target.value)}
+                                className="w-7 h-5 text-center bg-transparent text-xs font-black text-[#00f0ff] focus:outline-none"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => adjustScore(m.id, 'away', -1)}
+                                className="w-6 h-4 text-[9px] text-[#64748b] hover:text-[#ff0055] flex items-center justify-center font-bold"
+                              >
+                                ▼
+                              </button>
+                            </div>
+                          </div>
                         )}
                       </div>
-                    </div>
-                  </div>
 
-                  {/* ADMIN ACTION FOOTER */}
-                  {isAdmin && (
-                    <div className="pt-2 border-t border-[#1e294b]/50 flex items-center justify-between gap-2">
-                      <div className="flex items-center space-x-1.5">
-                        {isCompleted && (
+                      {/* AWAY TEAM */}
+                      <div className="col-span-4 flex items-center justify-end space-x-2 min-w-0 text-right">
+                        <div className="min-w-0">
+                          <p className="font-bold text-xs sm:text-sm text-white truncate leading-tight">
+                            {m.away_team?.name || 'Away'}
+                          </p>
+                          <span className="text-[9px] font-semibold text-[#64748b] block">Tamu</span>
+                        </div>
+                        <div className="w-9 h-9 rounded-xl bg-[#060913] border border-[#1e294b] flex items-center justify-center overflow-hidden shrink-0">
+                          {m.away_team?.logo_url ? (
+                            <img src={m.away_team.logo_url} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            <span className="font-black text-xs text-[#ff0055]">A</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* ADMIN ACTION FOOTER */}
+                    {isAdmin && (
+                      <div className="pt-2 border-t border-[#1e294b]/50 flex items-center justify-between gap-2">
+                        <div className="flex items-center space-x-1.5">
+                          {isCompleted && (
+                            <button
+                              type="button"
+                              onClick={() => handleResetMatch(m.id)}
+                              disabled={savingId === m.id}
+                              className="px-2.5 py-1.5 rounded-lg bg-[#060913] border border-[#1e294b] hover:border-yellow-500/50 text-[#64748b] hover:text-yellow-400 text-[11px] font-bold flex items-center space-x-1 transition-all"
+                            >
+                              <RotateCcw className="w-3 h-3" />
+                              <span>Reset</span>
+                            </button>
+                          )}
                           <button
                             type="button"
-                            onClick={() => handleResetMatch(m.id)}
-                            disabled={savingId === m.id}
-                            className="px-2.5 py-1.5 rounded-lg bg-[#060913] border border-[#1e294b] hover:border-yellow-500/50 text-[#64748b] hover:text-yellow-400 text-[11px] font-bold flex items-center space-x-1 transition-all"
+                            onClick={() => openScorerModal(m)}
+                            className="px-2.5 py-1.5 rounded-lg bg-[#060913] border border-[#1e294b] hover:border-[#00f0ff] text-[#94a3b8] hover:text-[#00f0ff] text-[11px] font-bold flex items-center space-x-1 transition-all"
                           >
-                            <RotateCcw className="w-3 h-3" />
-                            <span>Reset</span>
+                            <span>⚽ Pencetak Gol</span>
                           </button>
-                        )}
+                        </div>
+
                         <button
-                          type="button"
-                          onClick={() => openScorerModal(m)}
-                          className="px-2.5 py-1.5 rounded-lg bg-[#060913] border border-[#1e294b] hover:border-[#00f0ff] text-[#94a3b8] hover:text-[#00f0ff] text-[11px] font-bold flex items-center space-x-1 transition-all"
+                          onClick={() => handleSaveResult(m)}
+                          disabled={savingId === m.id}
+                          className={`px-3.5 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider flex items-center space-x-1.5 transition-all active:scale-95 ${
+                            isCompleted
+                              ? 'bg-[#00f0ff]/15 hover:bg-[#00f0ff] border border-[#00f0ff]/40 text-[#00f0ff] hover:text-slate-950'
+                              : 'bg-gradient-to-r from-[#00f0ff] to-[#0088ff] text-slate-950 shadow-[0_0_12px_rgba(0,240,255,0.3)]'
+                          }`}
                         >
-                          <span>⚽ Pencetak Gol</span>
+                          {isCompleted ? <Edit3 className="w-3 h-3" /> : <Save className="w-3 h-3" />}
+                          <span>
+                            {savingId === m.id ? 'Saving...' : isCompleted ? 'Update' : 'Simpan'}
+                          </span>
                         </button>
                       </div>
-
-                      <button
-                        onClick={() => handleSaveResult(m)}
-                        disabled={savingId === m.id}
-                        className={`px-3.5 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider flex items-center space-x-1.5 transition-all active:scale-95 ${
-                          isCompleted
-                            ? 'bg-[#00f0ff]/15 hover:bg-[#00f0ff] border border-[#00f0ff]/40 text-[#00f0ff] hover:text-slate-950'
-                            : 'bg-gradient-to-r from-[#00f0ff] to-[#0088ff] text-slate-950 shadow-[0_0_12px_rgba(0,240,255,0.3)]'
-                        }`}
-                      >
-                        {isCompleted ? <Edit3 className="w-3 h-3" /> : <Save className="w-3 h-3" />}
-                        <span>
-                          {savingId === m.id ? 'Saving...' : isCompleted ? 'Update' : 'Simpan'}
-                        </span>
-                      </button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
