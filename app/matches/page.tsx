@@ -367,70 +367,80 @@ function MatchesContent() {
   return (
     <div className="space-y-3.5 pb-28 sm:pb-12 max-w-5xl mx-auto px-1 sm:px-0">
       {/* Header Turnamen & Dropdown */}
-      <div className="bg-[#0f1629] p-4 sm:p-5 rounded-2xl border border-[#1e294b] shadow-md flex items-center justify-between gap-3">
-        <div className="flex items-center space-x-3 min-w-0">
-          <div className="w-10 h-10 rounded-xl bg-[#00f0ff]/10 text-[#00f0ff] border border-[#00f0ff]/30 flex items-center justify-center shrink-0">
-            <Swords className="w-5 h-5" />
+      {/* Header Turnamen: Ultra-Compact & Responsive */}
+      <div className="bg-[#0f1629] p-3 sm:p-4 rounded-2xl border border-[#1e294b] shadow-md space-y-2.5 sm:space-y-0 sm:flex sm:items-center sm:justify-between sm:gap-4">
+        {/* Sisi Kiri: Info Turnamen */}
+        <div className="flex items-center space-x-2.5 min-w-0">
+          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-[#00f0ff]/10 text-[#00f0ff] border border-[#00f0ff]/30 flex items-center justify-center shrink-0">
+            <Swords className="w-4 h-4 sm:w-5 sm:h-5" />
           </div>
-          <div className="min-w-0">
-            <div className="flex items-center space-x-2">
-              <h1 className="text-base sm:text-xl font-black text-white tracking-wide truncate uppercase">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
+              <h1 className="text-sm sm:text-base font-black text-white tracking-wide uppercase truncate max-w-[200px] sm:max-w-xs">
                 {activeTournamentInfo ? activeTournamentInfo.name : 'Jadwal & Hasil'}
               </h1>
               {activeTournamentInfo && (
-                <span className="px-2 py-0.5 rounded-full bg-[#00f0ff]/15 border border-[#00f0ff]/30 text-[#00f0ff] text-[10px] font-black uppercase">
+                <span className="px-1.5 py-0.5 rounded-md bg-[#00f0ff]/15 border border-[#00f0ff]/30 text-[#00f0ff] text-[9px] font-black uppercase tracking-wider">
                   {activeTournamentInfo.type}
                 </span>
               )}
             </div>
-            <p className="text-[11px] text-[#64748b] truncate">
-              {isAdmin ? 'Mode Admin: Input skor & pencetak gol' : 'Papan Skor Resmi (Mode Penonton)'}
+            <p className="text-[10px] text-[#64748b] leading-tight mt-0.5 truncate">
+              {isAdmin ? 'Admin: Input & update skor' : 'Papan Skor Resmi Penonton'}
             </p>
           </div>
         </div>
 
-        <div className="flex items-center space-x-2 shrink-0">
-          {/* Switch View Bracket (Khusus Turnamen Cup) */}
+        {/* Sisi Kanan: Action Controls (Toggle Bagan & Dropdown Switcher) */}
+        <div className="flex items-center space-x-2 w-full sm:w-auto pt-1 sm:pt-0 border-t sm:border-t-0 border-[#1e294b]/60">
+          {/* Toggle View List/Bagan (Khusus Cup) */}
           {activeTournamentInfo?.type === 'cup' && (
-            <div className="flex bg-[#060913] p-1 rounded-xl border border-[#1e294b]">
+            <div className="flex items-center bg-[#060913] p-0.5 rounded-lg border border-[#1e294b] shrink-0">
               <button
+                type="button"
                 onClick={() => setViewMode('list')}
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
-                  viewMode === 'list' ? 'bg-[#00f0ff] text-slate-950 shadow-sm' : 'text-[#64748b] hover:text-white'
+                className={`px-2 py-1 rounded-md text-[10px] font-bold tracking-tight transition-all ${
+                  viewMode === 'list'
+                    ? 'bg-[#00f0ff] text-slate-950 shadow-sm'
+                    : 'text-[#64748b] hover:text-white'
                 }`}
-                title="Tampilan List"
               >
                 List
               </button>
               <button
+                type="button"
                 onClick={() => setViewMode('bracket')}
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
-                  viewMode === 'bracket' ? 'bg-[#00f0ff] text-slate-950 shadow-sm' : 'text-[#64748b] hover:text-white'
+                className={`px-2 py-1 rounded-md text-[10px] font-bold tracking-tight transition-all ${
+                  viewMode === 'bracket'
+                    ? 'bg-[#00f0ff] text-slate-950 shadow-sm'
+                    : 'text-[#64748b] hover:text-white'
                 }`}
-                title="Tampilan Bagan Gugur"
               >
                 Bagan
               </button>
             </div>
           )}
 
+          {/* Selector Turnamen */}
           {tournaments.length > 0 && (
-            <select
-              value={selectedTournament}
-              onChange={(e) => {
-                setSelectedTournament(e.target.value);
-                setCurrentMatchday(1);
-                setSelectedTeamFilter('all');
-                setSearchClubKeyword('');
-              }}
-              className="bg-[#060913] border border-[#1e294b] rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-[#00f0ff] font-bold"
-            >
-              {tournaments.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
+            <div className="flex-1 sm:flex-initial">
+              <select
+                value={selectedTournament}
+                onChange={(e) => {
+                  setSelectedTournament(e.target.value);
+                  setCurrentMatchday(1);
+                  setSelectedTeamFilter('all');
+                  setSearchClubKeyword('');
+                }}
+                className="w-full sm:w-44 bg-[#060913] border border-[#1e294b] rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-[#00f0ff] font-bold truncate"
+              >
+                {tournaments.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           )}
         </div>
       </div>
