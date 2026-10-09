@@ -66,3 +66,10 @@ export interface TopScorerRow {
   teamLogo: string | null;
   goalsCount: number;
 }
+
+export interface MasterClub {
+  id: string;
+  name: string;
+  logo_url: string | null;
+  created_at?: string;
+}

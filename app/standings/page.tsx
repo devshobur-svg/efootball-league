@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { calculateStandings } from '@/lib/standings';
 import { Tournament, StandingRow, TopScorerRow } from '@/lib/types';
-import { Trophy, Share2, Check, Flame } from 'lucide-react';
+import { Trophy, Share2, Check, Flame, Loader2 } from 'lucide-react';
 
 function StandingsContent() {
   const searchParams = useSearchParams();
@@ -178,8 +178,9 @@ function StandingsContent() {
       </div>
 
       {loading ? (
-        <div className="p-10 text-center text-[#64748b] bg-[#0f1629] rounded-2xl border border-[#1e294b] text-sm">
-          Memperbarui data...
+        <div className="p-16 text-center bg-[#0f1629] rounded-2xl border border-[#1e294b] flex flex-col items-center justify-center space-y-3">
+          <Loader2 className="w-7 h-7 animate-spin text-[#00f0ff]" />
+          <span className="text-xs text-[#64748b] font-medium">Memproses tabel klasemen & top scorer...</span>
         </div>
       ) : activeTab === 'table' ? (
         /* TAB 1: KLASEMEN LEAGUE DENGAN FREEZE COLUMN */

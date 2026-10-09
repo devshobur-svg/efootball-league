@@ -3,11 +3,12 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
-import { Tournament, Match, Team } from '@/lib/types';
+import { Tournament, Match, Team, MasterClub } from '@/lib/types';
 import CreateTournamentModal from '@/components/CreateTournamentModal';
 import EditTournamentModal from '@/components/EditTournamentModal';
 import ManageTeamsModal from '@/components/ManageTeamsModal';
-import { Trophy, Swords, Users, PlusCircle, ArrowRight, Edit, Trash2, Settings2, ShieldCheck, Lock } from 'lucide-react';
+import MasterClubsModal from '@/components/MasterClubsModal';
+import { Trophy, Swords, Users, PlusCircle, ArrowRight, Edit, Trash2, ShieldCheck, Database, Loader2 } from 'lucide-react';
 
 export default function HomePage() {
   const [isAdmin, setIsAdmin] = useState(false);
@@ -15,10 +16,12 @@ export default function HomePage() {
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
+  const [masterClubsCount, setMasterClubsCount] = useState<number>(0);
   const [loading, setLoading] = useState(true);
 
   // States Modal
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isMasterClubsOpen, setIsMasterClubsOpen] = useState(false);
   const [editTourney, setEditTourney] = useState<Tournament | null>(null);
   const [manageTeamsTourney, setManageTeamsTourney] = useState<Tournament | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -43,10 +46,12 @@ export default function HomePage() {
       const { data: tourneys } = await supabase.from('tournaments').select('*').order('created_at', { ascending: false });
       const { data: mList } = await supabase.from('matches').select('*');
       const { data: tList } = await supabase.from('teams').select('*');
+      const { count: mcCount } = await supabase.from('master_clubs').select('*', { count: 'exact', head: true });
 
       if (tourneys) setTournaments(tourneys);
       if (mList) setMatches(mList);
       if (tList) setTeams(tList);
+      if (mcCount !== null) setMasterClubsCount(mcCount);
     } catch (err) {
       console.error(err);
     } finally {
@@ -61,7 +66,7 @@ export default function HomePage() {
   }, [isAdmin]);
 
   const handleDeleteTournament = async (t: Tournament) => {
-    const confirmDel = window.confirm(`Apakah Anda yakin ingin MENGHAPUS turnamen "${t.name}"? Seluruh data jadwal, skor, dan klasemen di turnamen ini akan dihapus permanen!`);
+    const confirmDel = window.confirm(`Apakah Anda yakin ingin MENGHAPUS turnamen "${t.name}"?`);
     if (!confirmDel) return;
 
     setDeletingId(t.id);
@@ -78,13 +83,14 @@ export default function HomePage() {
 
   if (checkingAuth) {
     return (
-      <div className="min-h-[60vh] flex items-center justify-center text-[#64748b]">
-        Memuat data...
+      <div className="min-h-[60vh] flex items-center justify-center space-x-2 text-[#64748b]">
+        <Loader2 className="w-5 h-5 animate-spin text-[#00f0ff]" />
+        <span>Memeriksa sesi...</span>
       </div>
     );
   }
 
-  // Pengunjung Publik (Belum Login)
+  // Pengunjung Publik
   if (!isAdmin) {
     return (
       <div className="min-h-[70vh] flex items-center justify-center px-4">
@@ -132,7 +138,7 @@ export default function HomePage() {
             </span>
           </div>
           <p className="text-xs text-[#64748b]">
-            Kelola kompetisi, jadwal laga, dan skor pertandingan.
+            Kelola kompetisi, jadwal laga, dan database klub.
           </p>
         </div>
 
@@ -145,7 +151,7 @@ export default function HomePage() {
         </button>
       </div>
 
-      {/* Quick Stats */}
+      {/* Quick Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
         <div className="bg-[#0f1629] border border-[#1e294b] p-4 rounded-2xl flex items-center space-x-3.5 shadow-md">
           <div className="w-11 h-11 rounded-xl bg-[#00f0ff]/10 text-[#00f0ff] border border-[#00f0ff]/30 flex items-center justify-center shrink-0">
@@ -153,18 +159,40 @@ export default function HomePage() {
           </div>
           <div>
             <span className="text-[11px] text-[#64748b] font-bold block uppercase tracking-wider">Total Turnamen</span>
-            <span className="text-xl font-black text-white font-mono">{tournaments.length}</span>
+            {loading ? (
+              <div className="h-6 w-10 bg-[#1e294b] animate-pulse rounded mt-1" />
+            ) : (
+              <span className="text-xl font-black text-white font-mono">{tournaments.length}</span>
+            )}
           </div>
         </div>
 
-        <div className="bg-[#0f1629] border border-[#1e294b] p-4 rounded-2xl flex items-center space-x-3.5 shadow-md">
-          <div className="w-11 h-11 rounded-xl bg-[#ff0055]/10 text-[#ff0055] border border-[#ff0055]/30 flex items-center justify-center shrink-0">
-            <Users className="w-5 h-5" />
+        {/* Card TOTAL KLUB: Klik untuk Buka Manajemen Master Database */}
+        <div
+          onClick={() => setIsMasterClubsOpen(true)}
+          className="bg-[#0f1629] border border-[#1e294b] hover:border-[#ff0055] p-4 rounded-2xl flex items-center justify-between cursor-pointer transition-all shadow-md group"
+          title="Klik untuk kelola database master klub"
+        >
+          <div className="flex items-center space-x-3.5">
+            <div className="w-11 h-11 rounded-xl bg-[#ff0055]/10 text-[#ff0055] border border-[#ff0055]/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+              <Database className="w-5 h-5" />
+            </div>
+            <div>
+              <span className="text-[11px] text-[#64748b] group-hover:text-[#ff0055] font-bold block uppercase tracking-wider transition-colors">
+                Database Klub Master
+              </span>
+              {loading ? (
+                <div className="h-6 w-10 bg-[#1e294b] animate-pulse rounded mt-1" />
+              ) : (
+                <span className="text-xl font-black text-white font-mono">
+                  {masterClubsCount || teams.length}
+                </span>
+              )}
+            </div>
           </div>
-          <div>
-            <span className="text-[11px] text-[#64748b] font-bold block uppercase tracking-wider">Total Klub</span>
-            <span className="text-xl font-black text-white font-mono">{teams.length}</span>
-          </div>
+          <span className="text-[10px] text-[#ff0055] font-bold hidden sm:inline-block">
+            Kelola ➔
+          </span>
         </div>
 
         <div className="bg-[#0f1629] border border-[#1e294b] p-4 rounded-2xl flex items-center space-x-3.5 shadow-md">
@@ -172,8 +200,12 @@ export default function HomePage() {
             <Swords className="w-5 h-5" />
           </div>
           <div>
-            <span className="text-[11px] text-[#64748b] font-bold block uppercase tracking-wider">Total Laga</span>
-            <span className="text-xl font-black text-white font-mono">{matches.length}</span>
+            <span className="text-[11px] text-[#64748b] font-bold block uppercase tracking-wider">Total Laga Terjadwal</span>
+            {loading ? (
+              <div className="h-6 w-10 bg-[#1e294b] animate-pulse rounded mt-1" />
+            ) : (
+              <span className="text-xl font-black text-white font-mono">{matches.length}</span>
+            )}
           </div>
         </div>
       </div>
@@ -185,8 +217,9 @@ export default function HomePage() {
         </h2>
 
         {loading ? (
-          <div className="p-8 text-center text-[#64748b] bg-[#0f1629] rounded-2xl border border-[#1e294b] text-xs">
-            Memuat data turnamen...
+          <div className="p-12 text-center bg-[#0f1629] rounded-2xl border border-[#1e294b] flex flex-col items-center justify-center space-y-2">
+            <Loader2 className="w-6 h-6 animate-spin text-[#00f0ff]" />
+            <span className="text-xs text-[#64748b]">Memuat data turnamen & klub...</span>
           </div>
         ) : tournaments.length === 0 ? (
           <div className="p-8 text-center text-[#64748b] bg-[#0f1629] rounded-2xl border border-[#1e294b] text-xs">
@@ -219,7 +252,6 @@ export default function HomePage() {
 
                 {/* CRUD ACTIONS BAR */}
                 <div className="flex items-center space-x-1.5 pt-2 sm:pt-0 border-t sm:border-t-0 border-[#1e294b]/50 justify-end shrink-0">
-                  {/* Edit Turnamen */}
                   <button
                     onClick={() => setEditTourney(t)}
                     className="p-2 rounded-xl bg-[#060913] border border-[#1e294b] hover:border-[#00f0ff] text-[#94a3b8] hover:text-[#00f0ff] transition-all"
@@ -228,7 +260,6 @@ export default function HomePage() {
                     <Edit className="w-4 h-4" />
                   </button>
 
-                  {/* Kelola Tim */}
                   <button
                     onClick={() => setManageTeamsTourney(t)}
                     className="p-2 rounded-xl bg-[#060913] border border-[#1e294b] hover:border-[#00f0ff] text-[#94a3b8] hover:text-[#00f0ff] transition-all"
@@ -237,17 +268,15 @@ export default function HomePage() {
                     <Users className="w-4 h-4" />
                   </button>
 
-                  {/* Hapus Turnamen */}
                   <button
                     onClick={() => handleDeleteTournament(t)}
                     disabled={deletingId === t.id}
-                    className="p-2 rounded-xl bg-[#060913] border border-[#1e294b] hover:border-[#ff0055] text-[#94a3b8] hover:text-[#ff0055] transition-all disabled:opacity-50"
+                    className="p-2 rounded-xl bg-[#060913] border border-[#1e294b] hover:border-[#ff0055] text-[#64748b] hover:text-[#ff0055] transition-all disabled:opacity-50"
                     title="Hapus Turnamen Ini"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
 
-                  {/* Buka Papan Laga */}
                   <Link
                     href={`/matches?tournamentId=${t.id}`}
                     className="px-3.5 py-2 rounded-xl bg-[#00f0ff]/15 border border-[#00f0ff]/40 hover:bg-[#00f0ff] text-[#00f0ff] hover:text-slate-950 text-xs font-black transition-all flex items-center space-x-1"
@@ -267,6 +296,13 @@ export default function HomePage() {
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
         onSuccess={loadData}
+      />
+
+      {/* Modal Manajemen Database Master Klub */}
+      <MasterClubsModal
+        isOpen={isMasterClubsOpen}
+        onClose={() => setIsMasterClubsOpen(false)}
+        onUpdated={loadData}
       />
 
       {/* Modal Edit Detail Turnamen */}

@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { Tournament, Match, Team } from '@/lib/types';
 import CupBracketView from '@/components/CupBracketView';
-import { Swords, ChevronLeft, ChevronRight, Save, Edit3, RotateCcw, Trophy, Trash2, X, BarChart2, Award, Search, LayoutGrid, ListFilter } from 'lucide-react';
+import { Swords, ChevronLeft, ChevronRight, Save, Edit3, RotateCcw, Trophy, Trash2, X, BarChart2, Award, Search, LayoutGrid, ListFilter, Loader2 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 function MatchesContent() {
@@ -367,9 +367,7 @@ function MatchesContent() {
   return (
     <div className="space-y-3.5 pb-28 sm:pb-12 max-w-5xl mx-auto px-1 sm:px-0">
       {/* Header Turnamen & Dropdown */}
-      {/* Header Turnamen: Ultra-Compact & Responsive */}
       <div className="bg-[#0f1629] p-3 sm:p-4 rounded-2xl border border-[#1e294b] shadow-md space-y-2.5 sm:space-y-0 sm:flex sm:items-center sm:justify-between sm:gap-4">
-        {/* Sisi Kiri: Info Turnamen */}
         <div className="flex items-center space-x-2.5 min-w-0">
           <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-[#00f0ff]/10 text-[#00f0ff] border border-[#00f0ff]/30 flex items-center justify-center shrink-0">
             <Swords className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -391,9 +389,7 @@ function MatchesContent() {
           </div>
         </div>
 
-        {/* Sisi Kanan: Action Controls (Toggle Bagan & Dropdown Switcher) */}
         <div className="flex items-center space-x-2 w-full sm:w-auto pt-1 sm:pt-0 border-t sm:border-t-0 border-[#1e294b]/60">
-          {/* Toggle View List/Bagan (Khusus Cup) */}
           {activeTournamentInfo?.type === 'cup' && (
             <div className="flex items-center bg-[#060913] p-0.5 rounded-lg border border-[#1e294b] shrink-0">
               <button
@@ -421,7 +417,6 @@ function MatchesContent() {
             </div>
           )}
 
-          {/* Selector Turnamen */}
           {tournaments.length > 0 && (
             <div className="flex-1 sm:flex-initial">
               <select
@@ -445,7 +440,7 @@ function MatchesContent() {
         </div>
       </div>
 
-      {/* FILTER & PENCARIAN KLUB (Poin 3) */}
+      {/* FILTER & PENCARIAN KLUB */}
       <div className="bg-[#0f1629] p-3 rounded-2xl border border-[#1e294b] flex flex-col sm:flex-row items-center gap-2.5 shadow-sm">
         <div className="relative w-full sm:flex-1">
           <Search className="w-4 h-4 text-[#64748b] absolute left-3 top-2.5" />
@@ -480,8 +475,13 @@ function MatchesContent() {
         </div>
       </div>
 
-      {/* TAMPILAN BAGAN KHUSUS CUP (Poin 4) */}
-      {viewMode === 'bracket' && activeTournamentInfo?.type === 'cup' ? (
+      {/* TAMPILAN BAGAN / LIST DENGAN LOADING STATE */}
+      {loading ? (
+        <div className="p-16 text-center bg-[#0f1629] rounded-2xl border border-[#1e294b] flex flex-col items-center justify-center space-y-3">
+          <Loader2 className="w-7 h-7 animate-spin text-[#00f0ff]" />
+          <span className="text-xs text-[#64748b] font-medium">Memuat jadwal pertandingan & tim...</span>
+        </div>
+      ) : viewMode === 'bracket' && activeTournamentInfo?.type === 'cup' ? (
         <div className="bg-[#0f1629] p-4 sm:p-5 rounded-2xl border border-[#1e294b] shadow-xl">
           <div className="flex items-center space-x-2 mb-4">
             <Trophy className="w-5 h-5 text-yellow-400" />
@@ -492,9 +492,7 @@ function MatchesContent() {
           <CupBracketView matches={matches} />
         </div>
       ) : (
-        /* TAMPILAN LIST STANDAR */
         <div className="space-y-3">
-          {/* Matchday Slider (Hanya tampil jika tidak sedang memfilter klub) */}
           {!isFilteringByClub ? (
             <div className="flex items-center justify-between bg-[#0f1629] px-3 py-2 rounded-xl border border-[#1e294b]">
               <button
@@ -539,7 +537,6 @@ function MatchesContent() {
             </div>
           )}
 
-          {/* List Kartu Pertandingan */}
           {filteredMatches.length === 0 ? (
             <div className="p-8 text-center text-[#64748b] bg-[#0f1629] rounded-2xl border border-[#1e294b] text-xs">
               Tidak ada pertandingan yang cocok dengan filter klub ini.

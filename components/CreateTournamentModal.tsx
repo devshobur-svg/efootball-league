@@ -1,10 +1,10 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { generateFixtures, generateCupBracket } from '@/lib/matchmaker';
-import { TournamentType, Team } from '@/lib/types';
-import { X, Plus, Trash2, Trophy, Upload, Image as ImageIcon } from 'lucide-react';
+import { MasterClub } from '@/lib/types';
+import { generateLeagueMatches, generateCupBracketMatches } from '@/lib/tournament-generator';
+import { X, Trophy, Shield, Upload, Check, Loader2, Database, Image as ImageIcon } from 'lucide-react';
 
 interface Props {
   isOpen: boolean;
@@ -12,380 +12,410 @@ interface Props {
   onSuccess: () => void;
 }
 
-interface TeamInput {
-  name: string;
-  logo: string;
-}
-
 export default function CreateTournamentModal({ isOpen, onClose, onSuccess }: Props) {
   const [name, setName] = useState('');
-  const [type, setType] = useState<TournamentType>('league');
-  const [tournamentLogo, setTournamentLogo] = useState<string>('');
+  const [tournamentLogo, setTournamentLogo] = useState<string | null>(null);
+  const [type, setType] = useState<'league' | 'cup'>('league');
   const [homeAway, setHomeAway] = useState(true);
-
-  const [teams, setTeams] = useState<TeamInput[]>([
-    { name: 'Arsenal', logo: '' },
-    { name: 'Barcelona', logo: '' },
-    { name: 'Bayern Munchen', logo: '' },
-    { name: 'Inter Milan', logo: '' },
-  ]);
-
+  const [numTeams, setNumTeams] = useState<number>(4);
+  const [teams, setTeams] = useState<{ name: string; logo_url: string | null }[]>([]);
   const [loading, setLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState('');
+  const [masterClubs, setMasterClubs] = useState<MasterClub[]>([]);
+  const [showMasterPicker, setShowMasterPicker] = useState<number | null>(null);
 
-  const tourneyFileInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (isOpen) {
+      supabase.from('master_clubs').select('*').order('name').then(({ data }) => {
+        if (data) setMasterClubs(data);
+      });
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    const updated = [...teams];
+    while (updated.length < numTeams) {
+      updated.push({ name: `Club ${updated.length + 1}`, logo_url: null });
+    }
+    while (updated.length > numTeams) {
+      updated.pop();
+    }
+    setTeams(updated);
+  }, [numTeams]);
 
   if (!isOpen) return null;
 
-  const compressImage = (file: File, maxSize: number = 200): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = (event) => {
-        const img = new Image();
-        img.src = event.target?.result as string;
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          let width = img.width;
-          let height = img.height;
-
-          if (width > height) {
-            if (width > maxSize) {
-              height = Math.round((height * maxSize) / width);
-              width = maxSize;
-            }
-          } else {
-            if (height > maxSize) {
-              width = Math.round((width * maxSize) / height);
-              height = maxSize;
-            }
-          }
-
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(img, 0, 0, width, height);
-            resolve(canvas.toDataURL('image/webp', 0.85));
-          } else {
-            resolve(event.target?.result as string);
-          }
-        };
-        img.onerror = (err) => reject(err);
-      };
-      reader.onerror = (err) => reject(err);
-    });
+  const handleTournamentLogoUpload = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setTournamentLogo(e.target?.result as string);
+    };
+    reader.readAsDataURL(file);
   };
 
-  const handleTournamentLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      setErrorMsg('Format file harus berupa gambar!');
-      return;
-    }
-    try {
-      const compressed = await compressImage(file, 250);
-      setTournamentLogo(compressed);
-    } catch {
-      setErrorMsg('Gagal membaca gambar dari device');
-    }
-  };
-
-  const handleTeamLogoUpload = async (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      setErrorMsg('Format file harus berupa gambar!');
-      return;
-    }
-    try {
-      const compressed = await compressImage(file, 160);
-      const updated = [...teams];
-      updated[index].logo = compressed;
-      setTeams(updated);
-    } catch {
-      setErrorMsg('Gagal memproses logo tim');
-    }
-  };
-
-  const handleAddTeamField = () => {
-    setTeams([...teams, { name: '', logo: '' }]);
-  };
-
-  const handleRemoveTeamField = (index: number) => {
-    if (teams.length <= 2) return;
-    setTeams(teams.filter((_, i) => i !== index));
-  };
-
-  const handleTeamNameChange = (index: number, val: string) => {
+  const handleSelectMasterClub = (slotIndex: number, master: MasterClub) => {
     const updated = [...teams];
-    updated[index].name = val;
+    updated[slotIndex] = {
+      name: master.name,
+      logo_url: master.logo_url,
+    };
     setTeams(updated);
+    setShowMasterPicker(null);
+  };
+
+  const handleClubLogoUpload = (index: number, file: File) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const result = e.target?.result as string;
+      const updated = [...teams];
+      updated[index] = {
+        ...updated[index],
+        logo_url: result,
+      };
+      setTeams(updated);
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setErrorMsg('');
-
-    const validTeams = teams
-      .map((t) => ({ name: t.name.trim(), logo: t.logo }))
-      .filter((t) => t.name.length > 0);
-
-    if (!name.trim()) {
-      setErrorMsg('Nama kompetisi wajib diisi!');
-      return;
-    }
-    if (validTeams.length < 2) {
-      setErrorMsg('Minimal sertakan 2 tim peserta!');
-      return;
-    }
+    if (!name.trim()) return;
 
     setLoading(true);
     try {
-      // 1. Insert Tournament
-      const { data: tourney, error: tourneyErr } = await supabase
+      // 1. Simpan data Turnamen beserta Logo
+      const { data: tourney, error: tErr } = await supabase
         .from('tournaments')
         .insert({
           name: name.trim(),
-          type,
           logo_url: tournamentLogo || null,
-          home_away: type === 'cup' ? false : homeAway,
-          is_active: true,
+          type,
+          home_away: type === 'league' ? homeAway : false,
         })
         .select()
         .single();
 
-      if (tourneyErr || !tourney) throw new Error(tourneyErr?.message || 'Gagal menyimpan turnamen');
+      if (tErr) throw tErr;
 
-      // 2. Insert Teams
-      const teamsToInsert = validTeams.map((t) => ({
+      // 2. Simpan Tim Peserta
+      const teamsPayload = teams.map((t) => ({
         tournament_id: tourney.id,
-        name: t.name,
-        logo_url: t.logo || `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(t.name)}`,
+        name: t.name.trim(),
+        logo_url: t.logo_url,
       }));
 
       const { data: createdTeams, error: teamsErr } = await supabase
         .from('teams')
-        .insert(teamsToInsert)
+        .insert(teamsPayload)
         .select();
 
-      if (teamsErr || !createdTeams) throw new Error(teamsErr?.message || 'Gagal menyimpan daftar tim');
+      if (teamsErr) throw teamsErr;
 
-      // 3. Generate Fixtures (League vs Cup)
-      const fixtures = type === 'cup' 
-        ? generateCupBracket(createdTeams as Team[])
-        : generateFixtures(createdTeams as Team[], homeAway);
+      // 3. Simpan juga klub baru ke master_clubs jika belum ada di database
+      const masterClubsToSync = teams
+        .filter((t) => t.name.trim().length > 0)
+        .map((t) => ({
+          name: t.name.trim(),
+          logo_url: t.logo_url,
+        }));
+      
+      if (masterClubsToSync.length > 0) {
+        await supabase.from('master_clubs').upsert(masterClubsToSync, { onConflict: 'name' });
+      }
 
-      const matchesToInsert = fixtures.map((f) => ({
-        tournament_id: tourney.id,
-        matchday: f.matchday,
-        home_team_id: f.home_team_id,
-        away_team_id: f.away_team_id,
-        home_score: 0,
-        away_score: 0,
-        status: 'upcoming',
-        round: f.round || (type === 'cup' ? 'Ronde 1' : 'League'),
-      }));
+      // 4. Generate Match Schedule
+      const teamIds = createdTeams.map((t) => t.id);
+      let matchPayloads = [];
 
-      const { error: matchErr } = await supabase.from('matches').insert(matchesToInsert);
-      if (matchErr) throw new Error(matchErr.message);
+      if (type === 'league') {
+        matchPayloads = generateLeagueMatches(tourney.id, teamIds, homeAway);
+      } else {
+        matchPayloads = generateCupBracketMatches(tourney.id, teamIds);
+      }
+
+      if (matchPayloads.length > 0) {
+        const { error: mErr } = await supabase.from('matches').insert(matchPayloads);
+        if (mErr) throw mErr;
+      }
 
       onSuccess();
       onClose();
     } catch (err: any) {
-      setErrorMsg(err.message || 'Terjadi gangguan koneksi');
+      alert(`Gagal membuat turnamen: ${err.message}`);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
-      <div className="bg-[#0f1629] border border-[#1e294b] rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 shadow-[0_0_40px_rgba(0,240,255,0.2)]">
-        <div className="flex items-center justify-between pb-4 border-b border-[#1e294b]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md">
+      <div className="bg-[#0f1629] border border-[#1e294b] rounded-2xl w-full max-w-2xl max-h-[92vh] flex flex-col p-4 sm:p-6 shadow-2xl space-y-4">
+        {/* Header Modal */}
+        <div className="flex items-center justify-between pb-3 border-b border-[#1e294b] shrink-0">
           <div className="flex items-center space-x-2.5">
-            <div className="p-2 rounded-lg bg-[#00f0ff]/10 text-[#00f0ff] border border-[#00f0ff]/30">
+            <div className="p-2 rounded-xl bg-[#00f0ff]/10 text-[#00f0ff] border border-[#00f0ff]/30">
               <Trophy className="w-5 h-5" />
             </div>
-            <h2 className="text-xl font-black text-white tracking-wide">BUAT TURNAMEN BARU</h2>
+            <div>
+              <h2 className="text-base sm:text-lg font-black text-white uppercase tracking-wide">
+                Buat Kompetisi Baru
+              </h2>
+              <p className="text-xs text-[#64748b]">Format Liga atau Sistem Gugur (Cup)</p>
+            </div>
           </div>
-          <button
-            onClick={onClose}
-            className="text-[#64748b] hover:text-white transition-colors p-1 rounded-lg hover:bg-[#060913]"
-          >
+          <button onClick={onClose} className="text-[#64748b] hover:text-white p-1 rounded-lg">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {errorMsg && (
-          <div className="mt-4 p-3 bg-[#ff0055]/15 border border-[#ff0055]/40 rounded-lg text-[#ff0055] text-sm font-semibold">
-            {errorMsg}
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="mt-5 space-y-5">
-          {/* Logo Upload */}
-          <div>
-            <label className="block text-xs font-bold text-[#64748b] uppercase tracking-wider mb-2">
-              Logo Kompetisi (Opsional)
-            </label>
-            <div className="flex items-center space-x-4">
-              <div className="w-16 h-16 rounded-xl bg-[#060913] border border-[#1e294b] flex items-center justify-center overflow-hidden shrink-0">
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto space-y-4 pr-1">
+          {/* Section 1: Logo & Nama Turnamen */}
+          <div className="bg-[#060913] p-3.5 rounded-xl border border-[#1e294b] space-y-3">
+            <span className="text-[11px] font-black text-[#64748b] uppercase tracking-wider block">
+              Identitas Turnamen
+            </span>
+            <div className="flex items-center space-x-3.5">
+              {/* Upload Logo Turnamen */}
+              <label className="relative w-16 h-16 rounded-xl bg-[#0f1629] border border-[#1e294b] hover:border-[#00f0ff] flex flex-col items-center justify-center overflow-hidden shrink-0 cursor-pointer group transition-all">
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleTournamentLogoUpload(file);
+                  }}
+                />
                 {tournamentLogo ? (
                   <img src={tournamentLogo} alt="Logo" className="w-full h-full object-cover" />
                 ) : (
-                  <ImageIcon className="w-7 h-7 text-[#64748b]" />
+                  <div className="flex flex-col items-center justify-center text-[#64748b] group-hover:text-[#00f0ff] transition-colors">
+                    <Upload className="w-5 h-5 mb-0.5" />
+                    <span className="text-[9px] font-bold uppercase tracking-wider">Logo</span>
+                  </div>
                 )}
-              </div>
-              <div className="flex flex-col space-y-1.5">
+              </label>
+
+              <div className="flex-1 space-y-1">
+                <label className="block text-xs font-bold text-[#64748b] uppercase tracking-wider">
+                  Nama Kompetisi
+                </label>
                 <input
-                  type="file"
-                  ref={tourneyFileInputRef}
-                  accept="image/*"
-                  onChange={handleTournamentLogoUpload}
-                  className="hidden"
+                  type="text"
+                  required
+                  placeholder="misal: eFootball League Season 5"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="w-full bg-[#0f1629] border border-[#1e294b] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[#00f0ff] font-bold"
                 />
-                <button
-                  type="button"
-                  onClick={() => tourneyFileInputRef.current?.click()}
-                  className="px-4 py-2 rounded-xl bg-[#060913] border border-[#1e294b] hover:border-[#00f0ff] text-xs font-bold text-white hover:text-[#00f0ff] transition-all flex items-center space-x-2"
-                >
-                  <Upload className="w-4 h-4 text-[#00f0ff]" />
-                  <span>Pilih Logo dari Device</span>
-                </button>
-                {tournamentLogo && (
-                  <button
-                    type="button"
-                    onClick={() => setTournamentLogo('')}
-                    className="text-[11px] text-[#ff0055] hover:underline text-left"
-                  >
-                    Hapus Logo
-                  </button>
-                )}
               </div>
             </div>
           </div>
 
-          {/* Nama Kompetisi */}
-          <div>
-            <label className="block text-xs font-bold text-[#64748b] uppercase tracking-wider mb-1.5">
-              Nama Kompetisi
-            </label>
-            <input
-              type="text"
-              required
-              placeholder="Contoh: eFootball Super League S4"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full bg-[#060913] border border-[#1e294b] rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-[#00f0ff] font-bold"
-            />
+          {/* Section 2: Format & Pilihan Home-Away */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-[#64748b] uppercase tracking-wider mb-1.5">
+                Format Kompetisi
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setType('league')}
+                  className={`py-2 rounded-xl text-xs font-black uppercase tracking-wider border transition-all ${
+                    type === 'league'
+                      ? 'bg-[#00f0ff] text-slate-950 border-[#00f0ff]'
+                      : 'bg-[#060913] text-[#64748b] border-[#1e294b]'
+                  }`}
+                >
+                  League
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setType('cup')}
+                  className={`py-2 rounded-xl text-xs font-black uppercase tracking-wider border transition-all ${
+                    type === 'cup'
+                      ? 'bg-[#00f0ff] text-slate-950 border-[#00f0ff]'
+                      : 'bg-[#060913] text-[#64748b] border-[#1e294b]'
+                  }`}
+                >
+                  Cup (Gugur)
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-[#64748b] uppercase tracking-wider mb-1.5">
+                Jumlah Tim Peserta
+              </label>
+              <select
+                value={numTeams}
+                onChange={(e) => setNumTeams(parseInt(e.target.value, 10))}
+                className="w-full bg-[#060913] border border-[#1e294b] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[#00f0ff] font-bold"
+              >
+                {type === 'cup' ? (
+                  <>
+                    <option value={4}>4 Tim (Semi Final & Final)</option>
+                    <option value={8}>8 Tim (Quarter Final)</option>
+                    <option value={16}>16 Tim (Babak 16 Besar)</option>
+                  </>
+                ) : (
+                  <>
+                    <option value={4}>4 Tim</option>
+                    <option value={6}>6 Tim</option>
+                    <option value={8}>8 Tim</option>
+                    <option value={10}>10 Tim</option>
+                    <option value={12}>12 Tim</option>
+                    <option value={14}>14 Tim</option>
+                    <option value={16}>16 Tim</option>
+                    <option value={18}>18 Tim</option>
+                    <option value={20}>20 Tim</option>
+                  </>
+                )}
+              </select>
+            </div>
           </div>
 
-          {/* Format Turnamen */}
-          <div>
-            <label className="block text-xs font-bold text-[#64748b] uppercase tracking-wider mb-1.5">
-              Format Kompetisi
-            </label>
-            <select
-              value={type}
-              onChange={(e) => setType(e.target.value as TournamentType)}
-              className="w-full bg-[#060913] border border-[#1e294b] rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-[#00f0ff] font-bold"
-            >
-              <option value="league">League (Klasemen Penuh / Round Robin)</option>
-              <option value="cup">Cup (Format Gugur / Knockout Bracket)</option>
-            </select>
-          </div>
-
-          {/* Home Away Checkbox (Hanya jika Liga) */}
           {type === 'league' && (
-            <div className="flex items-center space-x-3 bg-[#060913]/60 p-3.5 rounded-xl border border-[#1e294b]">
+            <div className="flex items-center justify-between bg-[#060913] p-3 rounded-xl border border-[#1e294b]">
+              <span className="text-xs font-bold text-[#94a3b8]">Home & Away (2 Putaran Bolak-Balik)</span>
               <input
                 type="checkbox"
-                id="homeAwayCheck"
                 checked={homeAway}
                 onChange={(e) => setHomeAway(e.target.checked)}
                 className="w-4 h-4 accent-[#00f0ff] rounded cursor-pointer"
               />
-              <label htmlFor="homeAwayCheck" className="text-sm font-semibold text-white cursor-pointer select-none">
-                Gunakan Format Home & Away (2 Putaran Laga)
-              </label>
             </div>
           )}
 
-          {/* Daftar Tim */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-xs font-bold text-[#64748b] uppercase tracking-wider">
-                Daftar Tim Peserta ({teams.length} Tim)
-              </label>
-              <button
-                type="button"
-                onClick={handleAddTeamField}
-                className="text-xs font-bold text-[#00f0ff] hover:underline flex items-center space-x-1"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Tambah Slot Tim</span>
-              </button>
+          {/* Section 3: Daftar Slot Klub */}
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-black text-white uppercase tracking-wider">
+                Daftar Klub ({teams.length} Slot)
+              </span>
+              <span className="text-[11px] text-[#00f0ff]">
+                Klik logo untuk upload, atau klik ikon database untuk pilih
+              </span>
             </div>
 
-            <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
-              {teams.map((team, idx) => (
-                <div key={idx} className="flex items-center space-x-2 bg-[#060913] p-2 rounded-xl border border-[#1e294b]">
-                  <span className="text-xs text-[#64748b] w-5 text-center font-mono font-bold">{idx + 1}.</span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              {teams.map((t, idx) => (
+                <div
+                  key={idx}
+                  className="relative flex items-center space-x-2 bg-[#060913] p-2 rounded-xl border border-[#1e294b] hover:border-[#1e294b]/80"
+                >
+                  <span className="text-[10px] text-[#64748b] font-mono font-bold w-4 text-center">
+                    {idx + 1}.
+                  </span>
 
-                  <label className="relative w-8 h-8 rounded-lg bg-[#0f1629] border border-[#1e294b] flex items-center justify-center cursor-pointer hover:border-[#00f0ff] overflow-hidden shrink-0">
+                  {/* Upload Logo Klub Slot */}
+                  <label
+                    title="Upload Logo Klub"
+                    className="relative w-8 h-8 rounded-lg bg-[#0f1629] border border-[#1e294b] hover:border-[#00f0ff] flex items-center justify-center overflow-hidden shrink-0 cursor-pointer group"
+                  >
                     <input
                       type="file"
                       accept="image/*"
-                      onChange={(e) => handleTeamLogoUpload(idx, e)}
                       className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleClubLogoUpload(idx, file);
+                      }}
                     />
-                    {team.logo ? (
-                      <img src={team.logo} alt="Logo" className="w-full h-full object-cover" />
+                    {t.logo_url ? (
+                      <img src={t.logo_url} alt="" className="w-full h-full object-cover" />
                     ) : (
-                      <Upload className="w-3.5 h-3.5 text-[#64748b] hover:text-[#00f0ff]" />
+                      <Upload className="w-3.5 h-3.5 text-[#64748b] group-hover:text-[#00f0ff] transition-colors" />
                     )}
                   </label>
 
+                  {/* Input Nama Klub */}
                   <input
                     type="text"
                     required
-                    placeholder={`Nama Tim ${idx + 1}`}
-                    value={team.name}
-                    onChange={(e) => handleTeamNameChange(idx, e.target.value)}
-                    className="flex-1 bg-transparent border-0 px-2 py-1 text-sm text-white focus:outline-none font-bold"
+                    value={t.name}
+                    onChange={(e) => {
+                      const updated = [...teams];
+                      updated[idx].name = e.target.value;
+                      setTeams(updated);
+                    }}
+                    className="flex-1 bg-transparent text-xs text-white font-bold focus:outline-none min-w-0"
                   />
 
-                  {teams.length > 2 && (
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveTeamField(idx)}
-                      className="text-[#64748b] hover:text-[#ff0055] p-1 transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                  {/* Tombol Pilih dari Database Master */}
+                  <button
+                    type="button"
+                    onClick={() => setShowMasterPicker(showMasterPicker === idx ? null : idx)}
+                    className="p-1.5 rounded-lg bg-[#0f1629] border border-[#1e294b] hover:border-[#00f0ff] text-[#00f0ff] shrink-0 transition-colors"
+                    title="Pilih dari Master Klub"
+                  >
+                    <Database className="w-3.5 h-3.5" />
+                  </button>
+
+                  {/* Popover Dropdown Katalog Master */}
+                  {showMasterPicker === idx && (
+                    <div className="absolute right-0 top-12 z-50 w-64 bg-[#0f1629] border border-[#00f0ff] rounded-xl shadow-2xl p-2 max-h-48 overflow-y-auto space-y-1">
+                      <div className="flex items-center justify-between pb-1 border-b border-[#1e294b]">
+                        <span className="text-[10px] font-black text-[#00f0ff] uppercase">
+                          Pilih dari Database Klub
+                        </span>
+                        <button onClick={() => setShowMasterPicker(null)} className="text-[#64748b] hover:text-white">
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                      {masterClubs.length === 0 ? (
+                        <p className="text-[11px] text-[#64748b] py-2 text-center">Belum ada klub master.</p>
+                      ) : (
+                        masterClubs.map((mc) => (
+                          <button
+                            key={mc.id}
+                            type="button"
+                            onClick={() => handleSelectMasterClub(idx, mc)}
+                            className="w-full flex items-center space-x-2 p-1.5 rounded-lg hover:bg-[#060913] text-left text-xs font-bold text-white transition-colors"
+                          >
+                            <div className="w-5 h-5 rounded bg-[#060913] overflow-hidden shrink-0 flex items-center justify-center">
+                              {mc.logo_url ? (
+                                <img src={mc.logo_url} alt="" className="w-full h-full object-cover" />
+                              ) : (
+                                <Shield className="w-3 h-3 text-[#64748b]" />
+                              )}
+                            </div>
+                            <span className="truncate">{mc.name}</span>
+                          </button>
+                        ))
+                      )}
+                    </div>
                   )}
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Actions */}
-          <div className="pt-4 border-t border-[#1e294b] flex justify-end space-x-3">
+          {/* Footer Actions */}
+          <div className="pt-3 border-t border-[#1e294b] flex justify-end space-x-2 shrink-0">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-sm font-semibold rounded-xl bg-[#060913] border border-[#1e294b] hover:bg-[#1e294b] transition-colors text-white"
+              className="px-4 py-2 text-xs font-bold rounded-xl bg-[#060913] border border-[#1e294b] text-white"
             >
               Batal
             </button>
             <button
               type="submit"
               disabled={loading}
-              className="px-6 py-2.5 text-sm font-black rounded-xl bg-gradient-to-r from-[#00f0ff] to-[#0088ff] text-slate-950 hover:opacity-90 transition-opacity disabled:opacity-50 shadow-[0_0_15px_rgba(0,240,255,0.4)]"
+              className="px-5 py-2 rounded-xl bg-gradient-to-r from-[#00f0ff] to-[#0088ff] text-slate-950 font-black text-xs uppercase flex items-center space-x-1.5 shadow-md active:scale-95"
             >
-              {loading ? 'Memproses Jadwal...' : 'Buat Turnamen Sekarang'}
+              {loading ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Membuat Kompetisi...</span>
+                </>
+              ) : (
+                <>
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Generate Turnamen & Jadwal</span>
+                </>
+              )}
             </button>
           </div>
         </form>

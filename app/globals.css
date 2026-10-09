@@ -1,4 +1,9 @@
 @import "tailwindcss";
+@layer base {
+  .font-ef {
+    font-family: 'Chakra Petch', sans-serif;
+  }
+}
 
 @theme {
   --color-ef-bg: #060913;
@@ -23,6 +28,22 @@ body {
 }
 
 /* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #060913;
+}
+::-webkit-scrollbar-thumb {
+  background: #1e294b;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #00f0ff;
+}
+
+/* Styling tambahan untuk scrollbar cyberpunk */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
