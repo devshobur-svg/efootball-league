@@ -87,11 +87,28 @@ function MatchesContent() {
         .eq('tournament_id', selectedTournament)
         .order('matchday', { ascending: true });
 
-      if (data) {
+      if (data && data.length > 0) {
         setMatches(data as any);
         setAllMatchesForH2H(data as any);
         const maxMatchday = Math.max(...data.map((m) => m.matchday), 1);
         setTotalMatchdays(maxMatchday);
+
+        // --- LOGIKA OTOMATIS: Cari matchday pertama yang belum selesai (upcoming) ---
+        const allDays = Array.from(new Set(data.map((m) => m.matchday))).sort((a, b) => a - b);
+        let targetMatchday = allDays[0] || 1;
+
+        for (const day of allDays) {
+          const matchesInDay = data.filter((m) => m.matchday === day);
+          const hasIncomplete = matchesInDay.some((m) => m.status !== 'completed');
+          if (hasIncomplete) {
+            targetMatchday = day;
+            break;
+          } else {
+            targetMatchday = day;
+          }
+        }
+        setCurrentMatchday(targetMatchday);
+        // --------------------------------------------------------------------------
 
         const initialScoreMap: Record<string, { home: number; away: number }> = {};
         data.forEach((m) => {
@@ -342,7 +359,6 @@ function MatchesContent() {
 
   const activeTournamentInfo = tournaments.find((t) => t.id === selectedTournament);
 
-  // Filter Match Logika: Matchday ATAU Filter Klub Tertentu
   const isFilteringByClub = selectedTeamFilter !== 'all' || searchClubKeyword.trim().length > 0;
 
   const filteredMatches = matches.filter((m) => {
@@ -423,7 +439,6 @@ function MatchesContent() {
                 value={selectedTournament}
                 onChange={(e) => {
                   setSelectedTournament(e.target.value);
-                  setCurrentMatchday(1);
                   setSelectedTeamFilter('all');
                   setSearchClubKeyword('');
                 }}
